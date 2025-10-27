@@ -1,9 +1,0 @@
-[build]
-builder = "GO"
-buildCommand = "go build -o bin/selsichain ./cmd/selsichain/main.go"
-
-[deploy]
-startCommand = "./bin/selsichain --p2p-port=$PORT --testnet"
-
-[env]
-PORT = "7690"
