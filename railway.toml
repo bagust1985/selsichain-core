@@ -1,8 +1,5 @@
 [build]
 builder = "nixpacks"
 
-[build.buildCommand]
-cmd = "go build -o /app/bin/selsichain ./cmd/selsichain/main.go"
-
 [deploy]
-startCommand = "/app/bin/selsichain --p2p-port=$PORT --testnet"
+startCommand = "go run ./cmd/selsichain/main.go --p2p-port=$PORT --testnet"
