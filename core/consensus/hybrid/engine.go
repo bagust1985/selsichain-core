@@ -1,0 +1,147 @@
+package hybrid
+
+import (
+    "fmt"
+    "math/big"
+    "time"
+    "github.com/selsichain/selsichain-core/core/types"
+    "github.com/selsichain/selsichain-core/core/state"
+)
+
+type HybridEngine struct {
+    config    *Config
+    powEngine *POWEngine
+    posEngine *POSEngine
+}
+
+func NewHybridEngine(config *Config) *HybridEngine {
+    return &HybridEngine{
+        config:    config,
+        powEngine: NewPOWEngine(config),
+        posEngine: NewPOSEngine(config),
+    }
+}
+
+// VerifyBlock implements hybrid verification
+func (h *HybridEngine) VerifyBlock(block *types.Block, state *state.StateDB) error {
+    fmt.Printf("\n🔍 Verifying Block #%s...\n", block.Header.Number)
+    
+    if h.isCheckpointBlock(block.Header.Number) {
+        fmt.Printf("⛏️  Using PoW Consensus (Checkpoint Block)\n")
+        if state != nil {
+            return h.powEngine.VerifyBlock(block, state)
+        }
+        return nil // Skip verification if no state for demo
+    } else {
+        fmt.Printf("🎯 Using PoS Consensus (Regular Block)\n")
+        if state != nil {
+            return h.posEngine.VerifyBlock(block, state)
+        }
+        return nil // Skip verification if no state for demo
+    }
+}
+
+// PrepareBlock prepares block based on consensus type
+func (h *HybridEngine) PrepareBlock(header *types.Header, txs []*types.Transaction) (*types.Block, error) {
+    block := &types.Block{
+        Header:       header,
+        Transactions: txs,
+        Votes:        []*types.Vote{},
+    }
+    
+    if h.isCheckpointBlock(header.Number) {
+        fmt.Printf("\n⛏️  Preparing PoW Checkpoint Block #%s\n", header.Number)
+        return h.powEngine.PrepareBlock(block)
+    } else {
+        fmt.Printf("\n🎯 Preparing PoS Regular Block #%s\n", header.Number)
+        return h.posEngine.PrepareBlock(block)
+    }
+}
+
+// CreateBlock creates and mines/stakes a new block
+func (h *HybridEngine) CreateBlock(parent *types.Block, txs []*types.Transaction, miner types.Address) (*types.Block, error) {
+    // Create new header dengan number yang benar
+    newNumber := new(big.Int).Add(parent.Header.Number, big.NewInt(1))
+    header := &types.Header{
+        ParentHash: h.calculateBlockHash(parent),
+        Number:     newNumber,
+        Time:       uint64(time.Now().Unix()), // Set current time
+        Difficulty: h.config.MiningDifficulty,
+        Coinbase:   miner,
+    }
+    
+    // Prepare block
+    block, err := h.PrepareBlock(header, txs)
+    if err != nil {
+        return nil, err
+    }
+    
+    // Mine or validate based on consensus type
+    if h.isCheckpointBlock(newNumber) {
+        fmt.Printf("⛏️  Mining PoW Checkpoint Block #%s\n", newNumber)
+        return h.powEngine.MineBlock(block)
+    } else {
+        fmt.Printf("🎯 Finalizing PoS Regular Block #%s\n", newNumber)
+        // For PoS, block is already prepared with votes
+        return block, nil
+    }
+}
+
+// CalculateRewards calculates hybrid reward distribution
+func (h *HybridEngine) CalculateRewards(block *types.Block, state *state.StateDB) map[types.Address]*big.Int {
+    totalReward := h.getBlockReward(block.Header.Number)
+    rewards := make(map[types.Address]*big.Int)
+    
+    fmt.Printf("\n💰 Calculating Rewards for Block #%s\n", block.Header.Number)
+    fmt.Printf("💰 Total Reward: %s SELSI\n", new(big.Int).Div(totalReward, new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)))
+    
+    // Calculate percentages
+    minerReward := new(big.Int).Div(new(big.Int).Mul(totalReward, big.NewInt(int64(h.config.RewardDistribution.MinerPercent))), big.NewInt(100))
+    stakerReward := new(big.Int).Div(new(big.Int).Mul(totalReward, big.NewInt(int64(h.config.RewardDistribution.StakerPercent))), big.NewInt(100))
+    ecosystemReward := new(big.Int).Div(new(big.Int).Mul(totalReward, big.NewInt(int64(h.config.RewardDistribution.EcosystemPercent))), big.NewInt(100))
+    burnReward := new(big.Int).Div(new(big.Int).Mul(totalReward, big.NewInt(int64(h.config.RewardDistribution.BurnPercent))), big.NewInt(100))
+    
+    if h.isCheckpointBlock(block.Header.Number) {
+        // PoW block - reward goes to miner
+        rewards[block.Header.Coinbase] = minerReward
+        fmt.Printf("💰 Miner %x gets: %s SELSI\n", block.Header.Coinbase[:4], 
+            new(big.Int).Div(minerReward, new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)))
+    } else {
+        // PoS block - reward goes to validator
+        rewards[block.Header.Validator] = stakerReward
+        fmt.Printf("💰 Validator %x gets: %s SELSI\n", block.Header.Validator[:4],
+            new(big.Int).Div(stakerReward, new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)))
+    }
+    
+    // Ecosystem fund
+    ecosystemAddress := types.Address{0xFF} // Mock ecosystem address
+    rewards[ecosystemAddress] = ecosystemReward
+    fmt.Printf("💰 Ecosystem gets: %s SELSI\n", 
+        new(big.Int).Div(ecosystemReward, new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)))
+    
+    // Burn mechanism
+    fmt.Printf("🔥 Burned: %s SELSI\n", 
+        new(big.Int).Div(burnReward, new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)))
+    
+    fmt.Printf("💰 Reward distribution completed!\n")
+    
+    return rewards
+}
+
+func (h *HybridEngine) isCheckpointBlock(blockNumber *big.Int) bool {
+    // Exclude block 0 (genesis) and check every 5 blocks
+    return blockNumber.Cmp(big.NewInt(0)) != 0 && 
+           new(big.Int).Mod(blockNumber, big.NewInt(int64(h.config.PowBlockInterval))).Cmp(big.NewInt(0)) == 0
+}
+
+func (h *HybridEngine) getBlockReward(blockNumber *big.Int) *big.Int {
+    // 100 SELSI dalam wei (18 decimals)
+    return new(big.Int).Mul(big.NewInt(100), new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+}
+
+func (h *HybridEngine) calculateBlockHash(block *types.Block) types.Hash {
+    // Mock hash calculation
+    var hash types.Hash
+    copy(hash[:], fmt.Sprintf("hash-%d", block.Header.Number))
+    return hash
+}

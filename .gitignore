@@ -1,0 +1,25 @@
+# Binaries
+bin/
+selsichain
+
+# Data directories
+data/
+*.db
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Dependency directories
+vendor/
+node_modules/
+
+# Build artifacts
+*.exe
+*.test
+*.out

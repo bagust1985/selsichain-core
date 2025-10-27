@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  node1:
+    build: .
+    ports:
+      - "7690:7690"
+    command: ["./selsichain", "--p2p-port=7690", "--testnet"]
+    volumes:
+      - node1_data:/app/data
+
+  node2:
+    build: .
+    ports:
+      - "7691:7691" 
+    command: ["./selsichain", "--p2p-port=7691", "--testnet"]
+    volumes:
+      - node2_data:/app/data
+
+volumes:
+  node1_data:
+  node2_data:
